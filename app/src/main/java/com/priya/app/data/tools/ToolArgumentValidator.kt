@@ -8,7 +8,7 @@ object ToolArgumentValidator {
 
     fun validatePackageName(value: String?): Boolean {
         if (value.isNullOrBlank()) return false
-        return value.matches(Regex("^[a-zA-Z0-9_.]+$")) &&
+        return value.matches(Regex("^[+()\\d\\s-]{7,20}$")) &&
             !value.startsWith(".") &&
             !value.contains("..")
     }
