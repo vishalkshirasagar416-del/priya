@@ -6,6 +6,7 @@ import com.priya.app.domain.ai.AIProviderType
 import com.priya.app.domain.ai.AIRequest
 import com.priya.app.domain.ai.AIResponse
 import com.priya.app.domain.ai.AIResponseChunk
+import com.priya.app.domain.repository.AIConfigRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
@@ -20,17 +21,16 @@ private const val TAG = "PriyaAI"
 class AIProviderManager @Inject constructor(
     @Named("gemini") private val geminiProvider: AIProvider,
     @Named("openRouter") private val openRouterProvider: AIProvider,
+    private val configRepository: AIConfigRepository,
 ) {
 
     suspend fun generateText(request: AIRequest): AIResponse {
-        val geminiResponse = tryProvider(geminiProvider, request)
-        if (geminiResponse != null && geminiResponse.success && geminiResponse.text.isNotBlank()) {
-            return geminiResponse.copy(fallbackUsed = false)
-        }
-
-        val openRouterResponse = tryProvider(openRouterProvider, request)
-        if (openRouterResponse != null && openRouterResponse.success && openRouterResponse.text.isNotBlank()) {
-            return openRouterResponse.copy(fallbackUsed = geminiResponse != null && !geminiResponse.success)
+        val providers = orderedProviders()
+        providers.forEachIndexed { index, provider ->
+            val response = tryProvider(provider, request)
+            if (response != null && response.success && response.text.isNotBlank()) {
+                return response.copy(fallbackUsed = index > 0)
+            }
         }
 
         return AIResponse(
@@ -44,23 +44,14 @@ class AIProviderManager @Inject constructor(
     }
 
     fun streamText(request: AIRequest): Flow<AIResponseChunk> = flow {
-        val geminiStream = runCatching { geminiProvider.streamText(request) }
-        if (geminiStream.isSuccess) {
-            val stream = geminiStream.getOrThrow()
+        orderedProviders().forEachIndexed { index, provider ->
+            val stream = runCatching { provider.streamText(request) }.getOrNull() ?: return@forEachIndexed
             var emitted = false
             stream.collect { chunk ->
                 emitted = true
-                emit(chunk)
+                emit(chunk.copy(fallbackUsed = index > 0))
             }
             if (emitted) return@flow
-        }
-
-        val openRouterStream = runCatching { openRouterProvider.streamText(request) }
-        if (openRouterStream.isSuccess) {
-            openRouterStream.getOrThrow().collect { chunk ->
-                emit(chunk.copy(fallbackUsed = chunk.provider == AIProviderType.OPENROUTER))
-            }
-            return@flow
         }
 
         emit(
@@ -111,6 +102,15 @@ class AIProviderManager @Inject constructor(
         }
 
         return null
+    }
+
+    private fun orderedProviders(): List<AIProvider> {
+        val primary = configRepository.getConfig().primaryProvider
+        return if (primary == AIProviderType.OPENROUTER) {
+            listOf(openRouterProvider, geminiProvider)
+        } else {
+            listOf(geminiProvider, openRouterProvider)
+        }
     }
 
     private fun sanitizeForLogs(message: String?): String {

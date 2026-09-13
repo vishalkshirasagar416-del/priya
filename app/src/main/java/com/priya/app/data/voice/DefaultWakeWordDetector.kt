@@ -11,7 +11,7 @@ import javax.inject.Singleton
 @Singleton
 class DefaultWakeWordDetector @Inject constructor() : WakeWordDetector {
     override val defaultWakeWords: List<String> = PriyaWakeWords.DEFAULT
-    override val isAvailable: Boolean = false
+    override val isAvailable: Boolean = true
 
     override fun startListening(): Result<Unit> = Result.success(Unit)
 

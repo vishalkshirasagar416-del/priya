@@ -6,6 +6,7 @@ import com.priya.app.domain.tools.ToolParameter
 import com.priya.app.domain.tools.ToolRegistry
 import com.priya.app.domain.tools.ToolResult
 import kotlin.math.max
+import javax.inject.Inject
 
 enum class CommandIntent {
     CONVERSATION,
@@ -48,7 +49,7 @@ interface LLMToolGenerator {
     suspend fun generateToolRequest(prompt: String): ToolRequest?
 }
 
-class LocalIntentClassifier {
+class LocalIntentClassifier @Inject constructor() {
     fun classify(input: String): LocalIntentDecision {
         val text = input.trim()
         if (text.isBlank()) {
@@ -145,6 +146,39 @@ class LocalIntentClassifier {
             )
         }
 
+        if (hasAny(normalized, "open dialer", "open phone", "dial pad", "keypad")) {
+            return LocalIntentDecision(
+                intent = CommandIntent.ANDROID_ACTION,
+                requiresLLM = false,
+                toolRequest = ToolRequest("open_dialer"),
+                confidence = 0.93f,
+            )
+        }
+
+        if (hasAny(normalized, "open maps", "show me", "directions to", "navigate to")) {
+            val query = text.substringAfterAny("show me", "directions to", "navigate to")
+                .trim()
+                .ifBlank { null }
+            return LocalIntentDecision(
+                intent = CommandIntent.ANDROID_ACTION,
+                requiresLLM = false,
+                toolRequest = ToolRequest(
+                    "open_maps",
+                    query?.let { mapOf("query" to it) } ?: emptyMap(),
+                ),
+                confidence = 0.87f,
+            )
+        }
+
+        if (hasAny(normalized, "where am i", "my location", "current location")) {
+            return LocalIntentDecision(
+                intent = CommandIntent.SYSTEM_STATUS,
+                requiresLLM = false,
+                toolRequest = ToolRequest("get_location"),
+                confidence = 0.9f,
+            )
+        }
+
         if (hasAny(normalized, "call ", "phone ", "dial ", "make a call", "call my")) {
             return LocalIntentDecision(
                 intent = CommandIntent.CALL,
@@ -164,22 +198,62 @@ class LocalIntentClassifier {
         }
 
         if (hasAny(normalized, "set alarm", "wake me up", "alarm at")) {
+            val time = extractClockTime(text)
             return LocalIntentDecision(
                 intent = CommandIntent.ALARM,
                 requiresLLM = false,
-                toolRequest = ToolRequest("set_alarm", mapOf("hour" to "8", "minute" to "0")),
+                toolRequest = ToolRequest(
+                    "set_alarm",
+                    mapOf(
+                        "hour" to (time?.first?.toString() ?: "8"),
+                        "minute" to (time?.second?.toString() ?: "0"),
+                        "label" to "Priya alarm",
+                    ),
+                ),
+                confidence = 0.9f,
+            )
+        }
+
+        if (hasAny(normalized, "cancel alarm", "stop alarm", "delete alarm")) {
+            return LocalIntentDecision(
+                intent = CommandIntent.ALARM,
+                requiresLLM = false,
+                toolRequest = ToolRequest("cancel_alarm", mapOf("label" to "Priya alarm")),
+                confidence = 0.92f,
+            )
+        }
+
+        if (hasAny(normalized, "set timer", "start timer", "timer for")) {
+            val seconds = extractDurationSeconds(text)
+            return LocalIntentDecision(
+                intent = CommandIntent.REMINDER,
+                requiresLLM = false,
+                toolRequest = seconds?.let { ToolRequest("create_timer", mapOf("seconds" to it.toString())) },
+                confidence = if (seconds != null) 0.91f else 0.55f,
+            )
+        }
+
+        if (hasAny(normalized, "cancel reminder", "delete reminder", "forget reminder")) {
+            return LocalIntentDecision(
+                intent = CommandIntent.REMINDER,
+                requiresLLM = false,
+                toolRequest = ToolRequest(
+                    "delete_reminder",
+                    mapOf("title" to extractReminderTitle(text)),
+                ),
                 confidence = 0.9f,
             )
         }
 
         if (hasAny(normalized, "remind me", "set a reminder", "reminder")) {
+            val title = extractReminderTitle(text)
             return LocalIntentDecision(
                 intent = CommandIntent.REMINDER,
                 requiresLLM = false,
                 toolRequest = ToolRequest(
                     "create_reminder",
                     mapOf(
-                        "title" to "Reminder",
+                        "title" to title,
                         "date" to java.time.LocalDate.now().toString(),
                         "time" to "09:00",
                     )
@@ -210,7 +284,7 @@ class LocalIntentClassifier {
             return LocalIntentDecision(
                 intent = CommandIntent.MEMORY,
                 requiresLLM = false,
-                toolRequest = ToolRequest("memory_query"),
+                toolRequest = ToolRequest("memory_query", mapOf("text" to text)),
                 confidence = 0.84f,
             )
         }
@@ -289,9 +363,50 @@ class LocalIntentClassifier {
             .find(text)?.groupValues?.getOrNull(1)
         return target?.trim().orEmpty()
     }
+
+    private fun extractClockTime(text: String): Pair<Int, Int>? {
+        val match = Regex("\\b(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b", RegexOption.IGNORE_CASE)
+            .find(text) ?: return null
+        var hour = match.groupValues[1].toIntOrNull() ?: return null
+        val minute = match.groupValues[2].toIntOrNull() ?: 0
+        val meridiem = match.groupValues[3].lowercase()
+        if (hour !in 0..23 || minute !in 0..59) return null
+        if (meridiem == "pm" && hour < 12) hour += 12
+        if (meridiem == "am" && hour == 12) hour = 0
+        return hour to minute
+    }
+
+    private fun extractDurationSeconds(text: String): Long? {
+        val match = Regex("\\b(\\d+(?:\\.\\d+)?)\\s*(second|seconds|minute|minutes|hour|hours)\\b", RegexOption.IGNORE_CASE)
+            .find(text) ?: return null
+        val amount = match.groupValues[1].toDoubleOrNull() ?: return null
+        val multiplier = when (match.groupValues[2].lowercase()) {
+            "second", "seconds" -> 1.0
+            "minute", "minutes" -> 60.0
+            "hour", "hours" -> 3600.0
+            else -> return null
+        }
+        return (amount * multiplier).toLong().takeIf { it > 0L }
+    }
+
+    private fun extractReminderTitle(text: String): String {
+        return text.substringAfterAny("remind me to", "set a reminder to", "cancel reminder", "delete reminder")
+            .trim()
+            .removeSuffix(".")
+            .ifBlank { "Reminder" }
+            .take(120)
+    }
+
+    private fun String.substringAfterAny(vararg delimiters: String): String {
+        val match = delimiters
+            .mapNotNull { delimiter -> indexOf(delimiter, ignoreCase = true).takeIf { it >= 0 }?.let { it to delimiter } }
+            .minByOrNull { it.first }
+            ?: return this
+        return substring(match.first + match.second.length)
+    }
 }
 
-class CommandRouter(
+class CommandRouter @Inject constructor(
     private val registry: ToolRegistry,
     private val aiToolGenerator: LLMToolGenerator,
     private val classifier: LocalIntentClassifier = LocalIntentClassifier(),

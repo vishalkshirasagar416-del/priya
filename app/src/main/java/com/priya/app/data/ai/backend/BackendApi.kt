@@ -50,7 +50,9 @@ class DefaultBackendApi @Inject constructor(
             connection.requestMethod = "POST"
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer ${config.apiKey}")
+            if (config.apiKey.isNotBlank()) {
+                connection.setRequestProperty("Authorization", "Bearer ${config.apiKey}")
+            }
             connection.connectTimeout = TimeUnit.SECONDS.toMillis(15).toInt()
             connection.readTimeout = TimeUnit.SECONDS.toMillis(15).toInt()
             connection.doOutput = true

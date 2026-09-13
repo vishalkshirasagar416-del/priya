@@ -1,7 +1,7 @@
 package com.priya.app.data.ai
 
 import android.util.Log
-import com.priya.app.BuildConfig
+import com.priya.app.domain.repository.AIConfigRepository
 import com.priya.app.domain.ai.AIProvider
 import com.priya.app.domain.ai.AIProviderType
 import com.priya.app.domain.ai.AIRequest
@@ -24,16 +24,19 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class OpenRouterProvider @Inject constructor() : AIProvider {
+class OpenRouterProvider @Inject constructor(
+    private val configRepository: AIConfigRepository,
+) : AIProvider {
     override val providerType: AIProviderType = AIProviderType.OPENROUTER
 
     override suspend fun generateText(request: AIRequest): AIResponse = withContext(Dispatchers.IO) {
-        if (!isConfigured()) {
+        val apiKey = configRepository.getConfig().openRouterApiKey
+        if (apiKey.isBlank()) {
             return@withContext AIResponse(
                 text = "",
                 provider = providerType,
                 success = false,
-                errorMessage = "OpenRouter is not configured. Add OPENROUTER_API_KEY in local.properties during development.",
+                errorMessage = "OpenRouter API key is not configured. Open Settings -> AI provider to add your key.",
                 metadata = mapOf("configured" to false),
             )
         }
@@ -49,7 +52,7 @@ class OpenRouterProvider @Inject constructor() : AIProvider {
                 put("temperature", 0.8)
             }
 
-            val responseText = postJson(endpoint, payload.toString(), BuildConfig.OPENROUTER_API_KEY)
+            val responseText = postJson(endpoint, payload.toString(), apiKey)
             val extractedText = extractOpenRouterText(responseText)
             if (extractedText.isBlank()) {
                 AIResponse(
@@ -76,7 +79,7 @@ class OpenRouterProvider @Inject constructor() : AIProvider {
                 text = "",
                 provider = providerType,
                 success = false,
-                errorMessage = throwable.message ?: "OpenRouter request failed.",
+                errorMessage = "OpenRouter request failed. Please check your configuration or network connection.",
                 metadata = mapOf("configured" to true, "recoverable" to false),
             )
         }
@@ -94,7 +97,7 @@ class OpenRouterProvider @Inject constructor() : AIProvider {
         }
     }
 
-    override fun isConfigured(): Boolean = BuildConfig.OPENROUTER_API_KEY.isNotBlank()
+    override fun isConfigured(): Boolean = configRepository.getConfig().openRouterApiKey.isNotBlank()
 
     override fun isRecoverableFailure(error: Throwable): Boolean {
         val message = error.message.orEmpty().lowercase()

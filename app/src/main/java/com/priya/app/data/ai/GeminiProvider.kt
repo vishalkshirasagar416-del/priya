@@ -1,7 +1,7 @@
 package com.priya.app.data.ai
 
 import android.util.Log
-import com.priya.app.BuildConfig
+import com.priya.app.domain.repository.AIConfigRepository
 import com.priya.app.domain.ai.AIProvider
 import com.priya.app.domain.ai.AIProviderType
 import com.priya.app.domain.ai.AIRequest
@@ -23,22 +23,25 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class GeminiProvider @Inject constructor() : AIProvider {
+class GeminiProvider @Inject constructor(
+    private val configRepository: AIConfigRepository,
+) : AIProvider {
     override val providerType: AIProviderType = AIProviderType.GEMINI
 
     override suspend fun generateText(request: AIRequest): AIResponse = withContext(Dispatchers.IO) {
-        if (!isConfigured()) {
+        val apiKey = configRepository.getConfig().geminiApiKey
+        if (apiKey.isBlank()) {
             return@withContext AIResponse(
                 text = "",
                 provider = providerType,
                 success = false,
-                errorMessage = "Gemini is not configured. Add GEMINI_API_KEY in local.properties during development.",
+                errorMessage = "Gemini API key is not configured. Open Settings -> AI provider to add your key.",
                 metadata = mapOf("configured" to false),
             )
         }
 
         return@withContext try {
-            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${BuildConfig.GEMINI_API_KEY}"
+            val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey"
             val payload = JSONObject().apply {
                 put("contents", listOf(
                     JSONObject().put(
@@ -76,7 +79,7 @@ class GeminiProvider @Inject constructor() : AIProvider {
                 text = "",
                 provider = providerType,
                 success = false,
-                errorMessage = throwable.message ?: "Gemini request failed.",
+                errorMessage = "Gemini request failed. Please check your configuration or network connection.",
                 metadata = mapOf("configured" to true, "recoverable" to false),
             )
         }
@@ -94,7 +97,7 @@ class GeminiProvider @Inject constructor() : AIProvider {
         }
     }
 
-    override fun isConfigured(): Boolean = BuildConfig.GEMINI_API_KEY.isNotBlank()
+    override fun isConfigured(): Boolean = configRepository.getConfig().geminiApiKey.isNotBlank()
 
     override fun isRecoverableFailure(error: Throwable): Boolean {
         val message = error.message.orEmpty().lowercase()

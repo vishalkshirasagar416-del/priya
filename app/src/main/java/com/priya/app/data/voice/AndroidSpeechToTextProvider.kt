@@ -43,6 +43,17 @@ class AndroidSpeechToTextProvider @Inject constructor(
             return Result.failure(SecurityException("Microphone permission is required"))
         }
 
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            _state.value = _state.value.copy(
+                status = AudioState.ERROR,
+                errorMessage = "Speech recognition is unavailable on this device.",
+                partialText = "",
+                finalText = "",
+            )
+            return Result.failure(IllegalStateException("SpeechRecognizer is unavailable"))
+        }
+
+        recognizer?.destroy()
         val recognizerInstance = SpeechRecognizer.createSpeechRecognizer(context)
         recognizer = recognizerInstance
         recognizerInstance.setRecognitionListener(object : RecognitionListener {
@@ -79,6 +90,8 @@ class AndroidSpeechToTextProvider @Inject constructor(
             }
 
             override fun onError(error: Int) {
+                recognizer?.destroy()
+                recognizer = null
                 _state.value = _state.value.copy(
                     status = AudioState.ERROR,
                     errorMessage = mapError(error),
@@ -99,6 +112,8 @@ class AndroidSpeechToTextProvider @Inject constructor(
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Priya")
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
 
         recognizerInstance.startListening(intent)

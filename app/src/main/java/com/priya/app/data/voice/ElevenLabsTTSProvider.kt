@@ -4,8 +4,8 @@ import android.content.Context
 import android.media.MediaPlayer
 import android.speech.tts.TextToSpeech
 import android.util.Log
-import com.priya.app.BuildConfig
 import com.priya.app.core.AudioState
+import com.priya.app.domain.repository.AIConfigRepository
 import com.priya.app.domain.voice.TextToSpeechEngine
 import com.priya.app.domain.voice.VoiceContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,10 +24,12 @@ import javax.inject.Singleton
 @Singleton
 class ElevenLabsTTSProvider @Inject constructor(
     private val context: Context,
+    private val configRepository: AIConfigRepository,
 ) : TextToSpeechEngine {
     private val _state = MutableStateFlow(AudioState.IDLE)
     override val state: StateFlow<AudioState> = _state.asStateFlow()
-    override val isConfigured: Boolean = BuildConfig.ELEVENLABS_API_KEY.isNotBlank()
+    override val isConfigured: Boolean
+        get() = configRepository.getConfig().elevenLabsApiKey.isNotBlank()
     override val name: String = "ElevenLabs"
 
     private var tts: TextToSpeech? = null
@@ -92,7 +94,7 @@ class ElevenLabsTTSProvider @Inject constructor(
         connection.requestMethod = "POST"
         connection.setRequestProperty("Content-Type", "application/json")
         connection.setRequestProperty("Accept", "audio/mpeg")
-        connection.setRequestProperty("xi-api-key", BuildConfig.ELEVENLABS_API_KEY)
+        connection.setRequestProperty("xi-api-key", configRepository.getConfig().elevenLabsApiKey)
         connection.doOutput = true
         connection.connectTimeout = 20000
         connection.readTimeout = 30000

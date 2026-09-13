@@ -116,4 +116,9 @@ abstract class ToolModule {
     @IntoSet
     @Singleton
     abstract fun bindOpenCalendarTool(tool: OpenCalendarTool): AssistantTool
+
+    @Binds
+    @IntoSet
+    @Singleton
+    abstract fun bindMemoryTool(tool: MemoryTool): AssistantTool
 }

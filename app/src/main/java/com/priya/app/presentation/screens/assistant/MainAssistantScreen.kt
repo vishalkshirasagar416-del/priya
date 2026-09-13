@@ -1,5 +1,9 @@
 package com.priya.app.presentation.screens.assistant
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -46,12 +50,17 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,11 +68,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.priya.app.core.AssistantStatus
 import com.priya.app.domain.model.AssistantMessage
+import com.priya.app.services.BackgroundAssistantService
+import com.priya.app.avatar.PriyaAvatarView
 import com.priya.app.presentation.viewmodel.PriyaViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -78,6 +91,20 @@ fun MainAssistantScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
+    var messageText by remember { mutableStateOf("") }
+    var backgroundEnabled by remember { mutableStateOf(false) }
+    var requireWakeWord by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val microphoneLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted ->
+            if (granted) {
+                viewModel.toggleListening()
+            } else {
+                viewModel.updateStatus(AssistantStatus.ERROR)
+            }
+        },
+    )
 
     val quickActions = listOf(
         "Weather" to Icons.Default.SmartToy,
@@ -218,11 +245,16 @@ fun MainAssistantScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    AssistantAvatar(
-                        assistantStatus = uiState.assistantStatus,
-                        isListening = uiState.isListening,
-                        isSpeaking = uiState.isSpeaking,
-                        isProcessing = uiState.isProcessing,
+                    AndroidView(
+                        factory = { PriyaAvatarView(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(250.dp),
+                        update = { avatarView ->
+                            avatarView.setSpeaking(uiState.isSpeaking)
+                            if (uiState.isSpeaking) avatarView.setEmotion("happy")
+                        },
+                        onRelease = { avatarView -> avatarView.release() },
                     )
 
                     Text(
@@ -312,20 +344,10 @@ fun MainAssistantScreen(
                         return@Button
                     }
 
-                    val nextStatus = if (uiState.isListening) AssistantStatus.IDLE else AssistantStatus.LISTENING
-                    viewModel.updateStatus(nextStatus)
-
-                    if (nextStatus == AssistantStatus.LISTENING) {
-                        scope.launch {
-                            delay(1200)
-                            viewModel.addUserMessage("Set a reminder for 7:30 PM.")
-                            viewModel.updateStatus(AssistantStatus.THINKING)
-                            delay(1400)
-                            viewModel.addAssistantMessage("I’ve scheduled your reminder for 7:30 PM.")
-                            viewModel.updateStatus(AssistantStatus.SPEAKING)
-                            delay(2000)
-                            viewModel.updateStatus(AssistantStatus.IDLE)
-                        }
+                    if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        viewModel.toggleListening()
+                    } else {
+                        microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
                 shape = CircleShape,
@@ -341,6 +363,47 @@ fun MainAssistantScreen(
                     modifier = Modifier.size(34.dp),
                 )
             }
+        }
+
+        OutlinedButton(
+            onClick = {
+                if (backgroundEnabled) {
+                    BackgroundAssistantService.stop(context)
+                    backgroundEnabled = false
+                } else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    BackgroundAssistantService.start(context, requireWakeWord)
+                    backgroundEnabled = true
+                } else {
+                    onNavigateToPermissions()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (backgroundEnabled) "Stop background assistant" else "Start background assistant")
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Require wake word", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Only act after hearing Priya, Hey Priya, or Hi Priya.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = requireWakeWord,
+                onCheckedChange = { enabled ->
+                    requireWakeWord = enabled
+                    if (backgroundEnabled) {
+                        BackgroundAssistantService.start(context, enabled)
+                    }
+                },
+            )
         }
 
         Card(
@@ -413,6 +476,32 @@ fun MainAssistantScreen(
                         items(uiState.messages) { message ->
                             AssistantMessageBubble(message = message)
                         }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = messageText,
+                        onValueChange = { messageText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Message Priya") },
+                        singleLine = true,
+                    )
+                    Button(
+                        onClick = {
+                            val text = messageText.trim()
+                            if (text.isNotBlank()) {
+                                viewModel.sendMessage(text)
+                                messageText = ""
+                            }
+                        },
+                        enabled = messageText.isNotBlank() && !uiState.isProcessing,
+                    ) {
+                        Text("Send")
                     }
                 }
             }

@@ -7,11 +7,15 @@ import com.priya.app.data.ai.backend.BackendApi
 import com.priya.app.data.ai.backend.DefaultBackendApi
 import com.priya.app.data.local.PriyaDao
 import com.priya.app.data.local.PriyaDatabase
-import com.priya.app.data.repository.BackendAIRepository
+import com.priya.app.data.permissions.AndroidPermissionManager
+import com.priya.app.data.repository.AIRepositoryImpl
+import com.priya.app.data.repository.SecureAIConfigRepository
 import com.priya.app.data.scheduler.PriyaSchedulerImpl
 import com.priya.app.data.repository.DefaultPriyaRepository
 import com.priya.app.data.repository.InMemoryConversationRepository
 import com.priya.app.data.repository.LocalMemoryRepositoryImpl
+import com.priya.app.data.router.DefaultLLMToolGenerator
+import com.priya.app.data.tools.DefaultToolRegistry
 import com.priya.app.data.voice.AndroidSpeechToTextProvider
 import com.priya.app.data.voice.DefaultWakeWordDetector
 import com.priya.app.data.voice.ElevenLabsTTSProvider
@@ -20,14 +24,20 @@ import com.priya.app.data.voice.KokoroTTSProvider
 import com.priya.app.data.voice.LocalAndroidTTSProvider
 import com.priya.app.data.voice.PriyaVoiceManager
 import com.priya.app.domain.ai.AIProvider
+import com.priya.app.domain.permissions.PermissionManager
 import com.priya.app.domain.repository.AIRepository
+import com.priya.app.domain.repository.AIConfigRepository
 import com.priya.app.domain.repository.ConversationRepository
 import com.priya.app.domain.scheduler.ScheduledTaskScheduler
 import com.priya.app.domain.repository.LocalMemoryRepository
 import com.priya.app.domain.repository.PriyaRepository
+import com.priya.app.domain.router.LLMToolGenerator
+import com.priya.app.domain.tools.ToolRegistry
 import com.priya.app.domain.voice.SpeechToText
 import com.priya.app.domain.voice.WakeWordDetector
 import com.priya.app.services.AudioService
+import com.priya.app.services.DefaultAudioService
+import com.priya.app.services.DefaultPermissionService
 import com.priya.app.services.PermissionService
 import dagger.Binds
 import dagger.Module
@@ -62,7 +72,15 @@ abstract class AppModule {
 
     @Binds
     @Singleton
-    abstract fun bindAIRepository(repository: BackendAIRepository): AIRepository
+    abstract fun bindAIRepository(repository: AIRepositoryImpl): AIRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAIConfigRepository(repository: SecureAIConfigRepository): AIConfigRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPermissionManager(manager: AndroidPermissionManager): PermissionManager
 
     @Binds
     @Singleton
@@ -84,6 +102,14 @@ abstract class AppModule {
     @Singleton
     abstract fun bindWakeWordDetector(detector: DefaultWakeWordDetector): WakeWordDetector
 
+    @Binds
+    @Singleton
+    abstract fun bindToolRegistry(registry: DefaultToolRegistry): ToolRegistry
+
+    @Binds
+    @Singleton
+    abstract fun bindLLMToolGenerator(generator: DefaultLLMToolGenerator): LLMToolGenerator
+
     companion object {
         @Provides
         @Singleton
@@ -100,22 +126,11 @@ abstract class AppModule {
 
         @Provides
         @Singleton
-        fun provideAudioService(): AudioService {
-            return object : AudioService {
-                override suspend fun startListening(): Result<Unit> = throw NotImplementedError("Voice capture is not implemented yet.")
-                override suspend fun stopListening(): Result<Unit> = throw NotImplementedError("Voice capture is not implemented yet.")
-                override suspend fun speakText(text: String): Result<Unit> = throw NotImplementedError("TTS is not implemented yet.")
-            }
-        }
+        fun provideAudioService(service: DefaultAudioService): AudioService = service
 
         @Provides
         @Singleton
-        fun providePermissionService(): PermissionService {
-            return object : PermissionService {
-                override suspend fun hasMicrophonePermission(): Boolean = throw NotImplementedError("Permission logic is not implemented yet.")
-                override suspend fun requestMicrophonePermission(): Boolean = throw NotImplementedError("Permission logic is not implemented yet.")
-            }
-        }
+        fun providePermissionService(service: DefaultPermissionService): PermissionService = service
 
         @Provides
         @Singleton

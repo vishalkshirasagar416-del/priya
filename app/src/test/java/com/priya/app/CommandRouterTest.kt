@@ -48,6 +48,30 @@ class CommandRouterTest {
     }
 
     @Test
+    fun localIntentClassifier_parses_timer_and_alarm_commands() {
+        val classifier = LocalIntentClassifier()
+
+        val timer = classifier.classify("Set a timer for 5 minutes")
+        assertEquals("create_timer", timer.toolRequest?.tool)
+        assertEquals("300", timer.toolRequest?.arguments?.get("seconds"))
+
+        val alarm = classifier.classify("Wake me up at 7:30 pm")
+        assertEquals("set_alarm", alarm.toolRequest?.tool)
+        assertEquals("19", alarm.toolRequest?.arguments?.get("hour"))
+        assertEquals("30", alarm.toolRequest?.arguments?.get("minute"))
+    }
+
+    @Test
+    fun localIntentClassifier_reaches_navigation_and_cancellation_tools() {
+        val classifier = LocalIntentClassifier()
+
+        assertEquals("open_maps", classifier.classify("Navigate to the nearest hospital").toolRequest?.tool)
+        assertEquals("cancel_alarm", classifier.classify("Cancel my alarm").toolRequest?.tool)
+        assertEquals("delete_reminder", classifier.classify("Cancel reminder to study").toolRequest?.tool)
+        assertEquals("open_dialer", classifier.classify("Open the dialer").toolRequest?.tool)
+    }
+
+    @Test
     fun router_requires_llm_for_general_explanations() {
         val classifier = LocalIntentClassifier()
         val result = classifier.classify("Explain how JWT refresh tokens work.")

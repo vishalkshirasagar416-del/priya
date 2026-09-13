@@ -20,7 +20,10 @@ android {
         }
     }
 
-    fun getLocalProperty(key: String): String = localProperties.getProperty(key).orEmpty()
+    fun getLocalProperty(key: String): String {
+        val value = localProperties.getProperty(key)?.trim().orEmpty()
+        return value.replace("\\", "\\\\").replace("\"", "\\\"")
+    }
 
     defaultConfig {
         applicationId = "com.priya.app"
@@ -29,10 +32,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
 
-        buildConfigField("String", "GEMINI_API_KEY", "\"\"")
-        buildConfigField("String", "OPENROUTER_API_KEY", "\"\"")
-        buildConfigField("String", "ELEVENLABS_API_KEY", "\"\"")
-        buildConfigField("String", "KOKORO_MODEL_URL", "\"\"")
+        buildConfigField("String", "KOKORO_MODEL_URL", "\"${getLocalProperty("KOKORO_MODEL_URL")}\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

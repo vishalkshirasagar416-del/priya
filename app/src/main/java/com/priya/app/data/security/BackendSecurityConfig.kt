@@ -4,12 +4,12 @@ import javax.inject.Inject
 
 data class BackendSecurityConfig(
     val baseUrl: String = "https://api.priya.app",
-    val apiKey: String = "backend-api-key",
+    val apiKey: String = "",
 )
 
 class BackendSecurityConfigProvider @Inject constructor() {
     fun provide(): BackendSecurityConfig = BackendSecurityConfig(
         baseUrl = "https://api.priya.app",
-        apiKey = "backend-api-key",
+        apiKey = "",
     )
 }

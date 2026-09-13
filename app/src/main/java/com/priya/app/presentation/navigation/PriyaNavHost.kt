@@ -5,15 +5,20 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.priya.app.presentation.screens.assistant.MainAssistantScreen
+import com.priya.app.presentation.screens.settings.AiProviderSettingsScreen
+import com.priya.app.presentation.screens.settings.AIProviderSetupScreen
 import com.priya.app.presentation.screens.memory.MemoryScreen
 import com.priya.app.presentation.screens.permissions.PermissionsScreen
 import com.priya.app.presentation.screens.settings.SettingsScreen
 import com.priya.app.presentation.screens.settings.VoiceSettingsScreen
 import com.priya.app.presentation.screens.splash.SplashScreen
+import com.priya.app.presentation.viewmodel.AIConfigViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
 fun PriyaNavHost() {
     val navController = rememberNavController()
+    val configViewModel: AIConfigViewModel = hiltViewModel()
 
     NavHost(
         navController = navController,
@@ -22,10 +27,25 @@ fun PriyaNavHost() {
         composable(PriyaScreens.Splash.route) {
             SplashScreen(
                 onNavigateToMain = {
-                    navController.navigate(PriyaScreens.MainAssistant.route) {
+                    val destination = if (configViewModel.state.value.config.setupCompleted) {
+                        PriyaScreens.MainAssistant.route
+                    } else {
+                        PriyaScreens.AISetup.route
+                    }
+                    navController.navigate(destination) {
                         popUpTo(PriyaScreens.Splash.route) { inclusive = true }
                     }
                 }
+            )
+        }
+        composable(PriyaScreens.AISetup.route) {
+            AIProviderSetupScreen(
+                allowSkip = true,
+                onComplete = {
+                    navController.navigate(PriyaScreens.MainAssistant.route) {
+                        popUpTo(PriyaScreens.AISetup.route) { inclusive = true }
+                    }
+                },
             )
         }
         composable(PriyaScreens.MainAssistant.route) {
@@ -50,10 +70,7 @@ fun PriyaNavHost() {
             MemoryScreen(onBack = { navController.popBackStack() })
         }
         composable(PriyaScreens.AiProviderSettings.route) {
-            PlaceholderScreen(
-                title = "AI Provider Settings",
-                onBack = { navController.popBackStack() }
-            )
+            AiProviderSettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(PriyaScreens.VoiceSettings.route) {
             VoiceSettingsScreen(

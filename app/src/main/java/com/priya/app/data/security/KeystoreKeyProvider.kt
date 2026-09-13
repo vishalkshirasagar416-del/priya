@@ -10,10 +10,11 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class KeystoreKeyProvider(context: Context) {
+class KeystoreKeyProvider(
+    context: Context,
+    private val alias: String = DEFAULT_ALIAS,
+) {
     private val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-
-    private val alias = "priya_memory_encryption_key"
 
     fun encrypt(plainText: String): String {
         if (plainText.isBlank()) return plainText
@@ -60,6 +61,7 @@ class KeystoreKeyProvider(context: Context) {
     }
 
     companion object {
+        private const val DEFAULT_ALIAS = "priya_memory_encryption_key"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
     }
 }
