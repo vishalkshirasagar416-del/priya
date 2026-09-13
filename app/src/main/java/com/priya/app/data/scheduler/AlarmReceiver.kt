@@ -10,16 +10,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class AlarmReceiver : BroadcastReceiver() {
+
     override fun onReceive(context: Context, intent: Intent) {
         val taskId = intent.getStringExtra("task_id") ?: return
-        val database = PriyaDatabase.getInstance(context.applicationContext)
-        val task = database.priyaDao().getScheduledTask(taskId) ?: return
-        val domain = task.toDomain()
-        database.priyaDao().updateScheduledTaskStatus(taskId, ScheduledTaskStatus.DISPATCHED.name)
-        NotificationHelper.show(context.applicationContext, domain)
+
+        val pendingResult = goAsync()
+        val appContext = context.applicationContext
 
         CoroutineScope(Dispatchers.IO).launch {
-            database.priyaDao().updateScheduledTaskStatus(taskId, ScheduledTaskStatus.DISPATCHED.name)
+            try {
+                val database = PriyaDatabase.getInstance(appContext)
+                val task = database.priyaDao().getScheduledTask(taskId)
+                    ?: return@launch
+
+                val domain = task.toDomain()
+
+                database.priyaDao().updateScheduledTaskStatus(
+                    taskId,
+                    ScheduledTaskStatus.DISPATCHED.name,
+                )
+
+                NotificationHelper.show(appContext, domain)
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 }
